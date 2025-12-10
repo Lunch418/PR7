@@ -1,4 +1,5 @@
-﻿using System;
+﻿using HtmlAgilityPack;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -6,6 +7,7 @@ using System.Linq;
 using System.Net;
 using System.Text;
 using System.Threading.Tasks;
+using System.Xml;
 
 namespace HttpNewsPAT
 {
@@ -13,33 +15,78 @@ namespace HttpNewsPAT
     {
         static void Main(string[] args)
         {
-            SingIn("user", "user");
+            // Создаём запрос для получения данных на странице
+            WebRequest request = WebRequest.Create("http://news.permaviat.ru/main");
+            // Выполняем запрос, записывая результат в переменную response
+            HttpWebResponse response = (HttpWebResponse)request.GetResponse();
+            // Выводим статус ответа в консоль
+            Console.WriteLine(response.StatusDescription);
+            // Создаём поток для чтения данных ответа
+            Stream dataStream = response.GetResponseStream();
+            // Инициализируем поток для чтения данных
+            StreamReader reader = new StreamReader(dataStream);
+            // Читаем ответ
+            string responseFromServer = reader.ReadToEnd();
+            // Вводим ответ в консоль
+            Console.WriteLine(responseFromServer);
+            // Закрываем потоки и соединение
+            reader.Close();
+            dataStream.Close();
+            response.Close();
             Console.Read();
         }
-        public static void SingIn(string Login, string Password)
+
+        public static void ParsingHtml(string htmlCode)
         {
-            string url = "http://news.permaviat.ru/ajax/login.php";
+            var Html = new HtmlDocument();
+            Html.LoadHtml(htmlCode);
+
+            var Document = Html.DocumentNode;
+            IEnumerable<HtmlNode> DivNews = Document.Descendants("div").Where(x => x.HasClass("news"));
+
+            foreach (var DivNew in DivNews)
+            {
+                var src = DivNew.ChildNodes[1].GetAttributeValue("src", "none");
+                var name = DivNew.ChildNodes[3].InnerHtml;
+                var description = DivNew.ChildNodes[5].InnerHtml;
+
+                Console.WriteLine($"{name} \nИзображение: {src} \nОписание: {description}");
+            }
+        }
+        public static string GetContent(Cookie token)
+        {
+            string Content = null;
+            string url = "https://news.permaviat.ru/main";
             Debug.WriteLine($"Выполняем запрос: {url}");
 
-            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
-            request.Method = "POST";
-            request.ContentType = "application/x-www-form-urlencoded";
-            request.CookieContainer = new CookieContainer();
+            HttpWebRequest Request = (HttpWebRequest)WebRequest.Create(url);
+            Request.CookieContainer = new CookieContainer();
+            Request.CookieContainer.Add(token);
 
-            string postData = $"Login={Login}&password={Password}";
-            byte[] Data = Encoding.ASCII.GetBytes(postData);
-            request.ContentLength = Data.Length;
-
-            using (var stream = request.GetRequestStream())
+            using (HttpWebResponse Response = (HttpWebResponse)Request.GetResponse())
             {
-                stream.Write(Data, 0, Data.Length);
+                Debug.WriteLine($"Статус выполнения: {Response.StatusCode}");
+                Content = new StreamReader(Response.GetResponseStream()).ReadToEnd();
             }
 
-            HttpWebResponse response = (HttpWebResponse)request.GetResponse();
-            Debug.WriteLine($"Статус выполнения: {response.StatusCode}");
+            return Content;
+        }
+        public static void ParsingHtml(string htmlCode)
+        {
+            var html = new HtmlDocument();
+            html.LoadHtml(htmlCode);
 
-            string responseFromServer = new StreamReader(response.GetResponseStream()).ReadToEnd();
-            Console.WriteLine(responseFromServer);
+            var Document = html.DocumentNode;
+            IEnumerable<HtmlNode> DivsNews = Document.Descendants("div").Where(n => n.HasClass("news"));
+
+            foreach (HtmlNode DivNews in DivsNews)
+            {
+                var src = DivNews.ChildNodes[1].GetAttributeValue("src", "none");
+                var name = DivNews.ChildNodes[3].InnerText;
+                var description = DivNews.ChildNodes[5].InnerText;
+
+                Console.WriteLine(name + "\n" + "Изображение: " + src + "\n" + "Описание: " + description + "\n");
+            }
         }
     }
 }
