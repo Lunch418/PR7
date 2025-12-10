@@ -22,7 +22,7 @@ namespace HttpNewsPAT
             reader.Close();
             dataStream.Close();
             response.Close();
-            Console.Read();
+            Console.Read(); 
         }
     }
 }
