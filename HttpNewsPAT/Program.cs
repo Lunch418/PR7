@@ -1,5 +1,5 @@
-﻿using HtmlAgilityPack;
-using System;
+﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -7,86 +7,122 @@ using System.Linq;
 using System.Net;
 using System.Text;
 using System.Threading.Tasks;
-using System.Xml;
+using HtmlAgilityPack;
 
 namespace HttpNewsPAT
 {
-    class Program
+    public class Program
     {
         static void Main(string[] args)
         {
-            // Создаём запрос для получения данных на странице
-            WebRequest request = WebRequest.Create("http://news.permaviat.ru/main");
-            // Выполняем запрос, записывая результат в переменную response
+            SetupDebugOutputToFile();
+            Cookie token = SingIn("user", "user");
+            string Content = GetContent(token);
+            ParsingHtml(Content);
+            Console.Read();
+
+
+        }
+        public static void ParsingAvitoHtml(string htmlCode)
+        {
+            var html = new HtmlDocument();
+            html.LoadHtml(htmlCode);
+            var Document = html.DocumentNode;
+            IEnumerable DivsNews = Document.Descendants(0).Where(n => n.HasClass("news"));
+            foreach (HtmlNode DivNews in DivsNews)
+            {
+                var src = DivNews.ChildNodes[1].GetAttributeValue("src", "none");
+                var name = DivNews.ChildNodes[3].InnerText;
+                var description = DivNews.ChildNodes[5].InnerText;
+                Console.WriteLine(name + "\n" + "Изображение: " + src + "\n" + "Описание: " + description + "\n");
+            }
+        }
+
+        public static void ParsingHtml(string htmlCode)
+        {
+            var html = new HtmlDocument();
+            html.LoadHtml(htmlCode);
+            var Document = html.DocumentNode;
+            IEnumerable DivsNews = Document.Descendants(0).Where(n => n.HasClass("news"));
+            foreach (HtmlNode DivNews in DivsNews)
+            {
+                var src = DivNews.ChildNodes[1].GetAttributeValue("src", "none");
+                var name = DivNews.ChildNodes[3].InnerText;
+                var description = DivNews.ChildNodes[5].InnerText;
+                Console.WriteLine(name + "\n" + "Изображение: " + src + "\n" + "Описание: " + description + "\n");
+            }
+        }
+
+        public static Cookie SingIn(string Login, string Password)
+        {
+
+            Cookie token = null;
+            string url = "http://localhost/ajax/login.php";
+            Debug.WriteLine($"Выполняем запрос: {url}");
+            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
+            request.Method = "POST";
+            request.ContentType = "application/x-www-form-urlencoded";
+            request.CookieContainer = new CookieContainer();
+            string postData = $"login={Login}&password={Password}";
+            byte[] Data = Encoding.ASCII.GetBytes(postData);
+            request.ContentLength = Data.Length;
+            using (var stream = request.GetRequestStream())
+            {
+                stream.Write(Data, 0, Data.Length);
+
+            }
+            using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
+            {
+                Debug.WriteLine($"Статус выполнения: {response.StatusCode}");
+                string responseFromServer = new StreamReader(response.GetResponseStream()).ReadToEnd();
+                Console.WriteLine(responseFromServer);
+                token = response.Cookies["token"];
+            }
+
+            return token;
+        }
+
+        public static void Open()
+        {
+            WebRequest request = WebRequest.Create("http://localhost/main");
             HttpWebResponse response = (HttpWebResponse)request.GetResponse();
-            // Выводим статус ответа в консоль
-            Console.WriteLine(response.StatusDescription);
-            // Создаём поток для чтения данных ответа
+            Console.Write(response.StatusDescription);
             Stream dataStream = response.GetResponseStream();
-            // Инициализируем поток для чтения данных
             StreamReader reader = new StreamReader(dataStream);
-            // Читаем ответ
             string responseFromServer = reader.ReadToEnd();
-            // Вводим ответ в консоль
             Console.WriteLine(responseFromServer);
-            // Закрываем потоки и соединение
             reader.Close();
             dataStream.Close();
             response.Close();
             Console.Read();
         }
 
-        public static void ParsingHtml(string htmlCode)
-        {
-            var Html = new HtmlDocument();
-            Html.LoadHtml(htmlCode);
-
-            var Document = Html.DocumentNode;
-            IEnumerable<HtmlNode> DivNews = Document.Descendants("div").Where(x => x.HasClass("news"));
-
-            foreach (var DivNew in DivNews)
-            {
-                var src = DivNew.ChildNodes[1].GetAttributeValue("src", "none");
-                var name = DivNew.ChildNodes[3].InnerHtml;
-                var description = DivNew.ChildNodes[5].InnerHtml;
-
-                Console.WriteLine($"{name} \nИзображение: {src} \nОписание: {description}");
-            }
-        }
-        public static string GetContent(Cookie token)
+        public static string GetContent(Cookie Token)
         {
             string Content = null;
-            string url = "https://news.permaviat.ru/main";
+            string url = "http://localhost/main";
             Debug.WriteLine($"Выполняем запрос: {url}");
-
-            HttpWebRequest Request = (HttpWebRequest)WebRequest.Create(url);
-            Request.CookieContainer = new CookieContainer();
-            Request.CookieContainer.Add(token);
-
-            using (HttpWebResponse Response = (HttpWebResponse)Request.GetResponse())
+            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
+            request.CookieContainer = new CookieContainer();
+            request.CookieContainer.Add(Token);
+            using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
             {
-                Debug.WriteLine($"Статус выполнения: {Response.StatusCode}");
-                Content = new StreamReader(Response.GetResponseStream()).ReadToEnd();
-            }
+                Debug.WriteLine($"Статус выполнения: {response.StatusCode}");
+                Content = new StreamReader(response.GetResponseStream()).ReadToEnd();
 
+            }
             return Content;
+
         }
-        public static void ParsingHtml(string htmlCode)
+
+        private static void SetupDebugOutputToFile()
         {
-            var html = new HtmlDocument();
-            html.LoadHtml(htmlCode);
-
-            var Document = html.DocumentNode;
-            IEnumerable<HtmlNode> DivsNews = Document.Descendants("div").Where(n => n.HasClass("news"));
-
-            foreach (HtmlNode DivNews in DivsNews)
-            {
-                var src = DivNews.ChildNodes[1].GetAttributeValue("src", "none");
-                var name = DivNews.ChildNodes[3].InnerText;
-                var description = DivNews.ChildNodes[5].InnerText;
-
-                Console.WriteLine(name + "\n" + "Изображение: " + src + "\n" + "Описание: " + description + "\n");
-            }
+            string logFilePath = "debug_log.txt";
+            TextWriterTraceListener traceListener = new TextWriterTraceListener(logFilePath);
+            Debug.Listeners.Clear();
+            Debug.Listeners.Add(traceListener);
+            Debug.AutoFlush = true;
+            Debug.WriteLine($"=== Начало сеанса: {DateTime.Now} ===");
         }
     }
 }
