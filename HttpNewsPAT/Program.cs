@@ -1,128 +1,91 @@
-﻿using System;
-using System.Collections;
+﻿using HtmlAgilityPack;
+using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using System.Net;
-using System.Text;
-using System.Threading.Tasks;
-using HtmlAgilityPack;
+using System.Linq;
 
-namespace HttpNewsPAT
+namespace SimpleNewsParser
 {
-    public class Program
+    class Program
     {
         static void Main(string[] args)
         {
-            SetupDebugOutputToFile();
-            Cookie token = SingIn("user", "user");
-            string Content = GetContent(token);
-            ParsingHtml(Content);
-            Console.Read();
+            Console.OutputEncoding = System.Text.Encoding.UTF8;
+            Console.WriteLine("=== Парсер новостей Lenta.ru ===\n");
 
-
-        }
-        public static void ParsingAvitoHtml(string htmlCode)
-        {
-            var html = new HtmlDocument();
-            html.LoadHtml(htmlCode);
-            var Document = html.DocumentNode;
-            IEnumerable DivsNews = Document.Descendants(0).Where(n => n.HasClass("news"));
-            foreach (HtmlNode DivNews in DivsNews)
+            try
             {
-                var src = DivNews.ChildNodes[1].GetAttributeValue("src", "none");
-                var name = DivNews.ChildNodes[3].InnerText;
-                var description = DivNews.ChildNodes[5].InnerText;
-                Console.WriteLine(name + "\n" + "Изображение: " + src + "\n" + "Описание: " + description + "\n");
+                string htmlCode = GetHtmlFromUrl("https://lenta.ru/rubrics/media");
+
+                ParseLentaNews(htmlCode);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Ошибка: {ex.Message}");
+            }
+
+            Console.WriteLine("\nНажмите любую клавишу для выхода...");
+            Console.ReadKey();
+        }
+        public static string GetHtmlFromUrl(string url)
+        {
+            Console.WriteLine($"Загружаем страницу: {url}");
+
+            using (var client = new System.Net.Http.HttpClient())
+            {
+                client.DefaultRequestHeaders.Add("User-Agent",
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+                var response = client.GetAsync(url).Result;
+                response.EnsureSuccessStatusCode();
+
+                string htmlCode = response.Content.ReadAsStringAsync().Result;
+                Console.WriteLine($"Страница загружена успешно!\n");
+                return htmlCode;
             }
         }
 
-        public static void ParsingHtml(string htmlCode)
+        public static void ParseLentaNews(string htmlCode)
         {
-            var html = new HtmlDocument();
-            html.LoadHtml(htmlCode);
-            var Document = html.DocumentNode;
-            IEnumerable DivsNews = Document.Descendants(0).Where(n => n.HasClass("news"));
-            foreach (HtmlNode DivNews in DivsNews)
-            {
-                var src = DivNews.ChildNodes[1].GetAttributeValue("src", "none");
-                var name = DivNews.ChildNodes[3].InnerText;
-                var description = DivNews.ChildNodes[5].InnerText;
-                Console.WriteLine(name + "\n" + "Изображение: " + src + "\n" + "Описание: " + description + "\n");
-            }
-        }
+            var htmlDoc = new HtmlDocument();
+            htmlDoc.LoadHtml(htmlCode);
 
-        public static Cookie SingIn(string Login, string Password)
-        {
+            var newsCards = htmlDoc.DocumentNode
+                .SelectNodes("//section[contains(@class, 'rubric-page')]//a[contains(@class, 'card')]");
 
-            Cookie token = null;
-            string url = "http://localhost/ajax/login.php";
-            Debug.WriteLine($"Выполняем запрос: {url}");
-            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
-            request.Method = "POST";
-            request.ContentType = "application/x-www-form-urlencoded";
-            request.CookieContainer = new CookieContainer();
-            string postData = $"login={Login}&password={Password}";
-            byte[] Data = Encoding.ASCII.GetBytes(postData);
-            request.ContentLength = Data.Length;
-            using (var stream = request.GetRequestStream())
+            if (newsCards == null || !newsCards.Any())
             {
-                stream.Write(Data, 0, Data.Length);
-
-            }
-            using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
-            {
-                Debug.WriteLine($"Статус выполнения: {response.StatusCode}");
-                string responseFromServer = new StreamReader(response.GetResponseStream()).ReadToEnd();
-                Console.WriteLine(responseFromServer);
-                token = response.Cookies["token"];
+                Console.WriteLine("Новости не найдены. Возможно, изменилась структура сайта.");
+                return;
             }
 
-            return token;
-        }
+            Console.WriteLine($"Найдено новостей: {newsCards.Count}\n");
 
-        public static void Open()
-        {
-            WebRequest request = WebRequest.Create("http://localhost/main");
-            HttpWebResponse response = (HttpWebResponse)request.GetResponse();
-            Console.Write(response.StatusDescription);
-            Stream dataStream = response.GetResponseStream();
-            StreamReader reader = new StreamReader(dataStream);
-            string responseFromServer = reader.ReadToEnd();
-            Console.WriteLine(responseFromServer);
-            reader.Close();
-            dataStream.Close();
-            response.Close();
-            Console.Read();
-        }
-
-        public static string GetContent(Cookie Token)
-        {
-            string Content = null;
-            string url = "http://localhost/main";
-            Debug.WriteLine($"Выполняем запрос: {url}");
-            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
-            request.CookieContainer = new CookieContainer();
-            request.CookieContainer.Add(Token);
-            using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
+            int count = 0;
+            foreach (var card in newsCards.Take(10)) 
             {
-                Debug.WriteLine($"Статус выполнения: {response.StatusCode}");
-                Content = new StreamReader(response.GetResponseStream()).ReadToEnd();
+                count++;
+                Console.WriteLine($"Новость #{count}");
+                Console.WriteLine(new string('-', 50));
 
+                var titleNode = card.SelectSingleNode(".//h3[contains(@class, 'card-title')]") ??
+                               card.SelectSingleNode(".//span[contains(@class, 'card-title')]");
+                string title = titleNode?.InnerText?.Trim() ?? "Без заголовка";
+                Console.WriteLine($"Заголовок: {title}");
+                var descNode = card.SelectSingleNode(".//div[contains(@class, 'card-annotation')]");
+                string description = descNode?.InnerText?.Trim() ?? "Без описания";
+                if (description.Length > 150)
+                    description = description.Substring(0, 150) + "...";
+                Console.WriteLine($"Описание: {description}");
+
+                var timeNode = card.SelectSingleNode(".//time[contains(@class, 'card-date')]");
+                string date = timeNode?.InnerText?.Trim() ?? "Дата не указана";
+                Console.WriteLine($"Дата: {date}");
+                string link = "https://lenta.ru" + card.GetAttributeValue("href", "");
+                Console.WriteLine($"Ссылка: {link}");
+
+                Console.WriteLine(new string('-', 50) + "\n");
             }
-            return Content;
-
-        }
-
-        private static void SetupDebugOutputToFile()
-        {
-            string logFilePath = "debug_log.txt";
-            TextWriterTraceListener traceListener = new TextWriterTraceListener(logFilePath);
-            Debug.Listeners.Clear();
-            Debug.Listeners.Add(traceListener);
-            Debug.AutoFlush = true;
-            Debug.WriteLine($"=== Начало сеанса: {DateTime.Now} ===");
         }
     }
 }
