@@ -4,87 +4,100 @@ using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Linq;
+using System.Collections;
+using System.Diagnostics;
+using System.Text;
 
 namespace SimpleNewsParser
 {
-    class Program
+    internal class Program
     {
         static void Main(string[] args)
         {
-            Console.OutputEncoding = System.Text.Encoding.UTF8;
-            Console.WriteLine("=== Парсер новостей Lenta.ru ===\n");
+            Cookie token = SingIn("user", "user");
+            string Content = GetContent(token);
+            ParsingHtml(Content);
+            //WebRequest request = WebRequest.Create("https://news.permaviat.ru/main");
+            //HttpWebResponse response = (HttpWebResponse)request.GetResponse();
+            //Console.WriteLine(response.StatusDescription);
+            //using (Stream dataStream = response.GetResponseStream()) 
+            //{
+            //    using (StreamReader reader = new StreamReader(dataStream))
+            //    {
+            //        string responseFromServer = reader.ReadToEnd();
+            //        Console.WriteLine(responseFromServer);
+            //    }
+            //}              
 
-            try
-            {
-                string htmlCode = GetHtmlFromUrl("https://lenta.ru/rubrics/media");
 
-                ParseLentaNews(htmlCode);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Ошибка: {ex.Message}");
-            }
+            ////reader.Close();
+            ////dataStream.Close();
+            ////response.Close();
+            Console.Read();
 
-            Console.WriteLine("\nНажмите любую клавишу для выхода...");
-            Console.ReadKey();
         }
-        public static string GetHtmlFromUrl(string url)
+        public static Cookie SingIn(string login, string password)
         {
-            Console.WriteLine($"Загружаем страницу: {url}");
+            Cookie token = null;
+            string Url = "http://news.permaviat.ru/ajax/login.php";
 
-            using (var client = new System.Net.Http.HttpClient())
+            Debug.WriteLine($"Выполняем запрос: {Url}");
+
+            HttpWebRequest Request = (HttpWebRequest)WebRequest.Create(Url);
+            Request.Method = "POST";
+            Request.ContentType = "application/x-www-form-urlencoded";
+            Request.CookieContainer = new CookieContainer();
+
+            byte[] Data = Encoding.ASCII.GetBytes($"Login={login}&password={password}");
+            Request.ContentLength = Data.Length;
+
+            using (Stream stream = Request.GetRequestStream())
             {
-                client.DefaultRequestHeaders.Add("User-Agent",
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
-                var response = client.GetAsync(url).Result;
-                response.EnsureSuccessStatusCode();
-
-                string htmlCode = response.Content.ReadAsStringAsync().Result;
-                Console.WriteLine($"Страница загружена успешно!\n");
-                return htmlCode;
+                stream.Write(Data, 0, Data.Length);
             }
+
+            using (HttpWebResponse Response = (HttpWebResponse)Request.GetResponse())
+            {
+                Debug.WriteLine($"Статус выполнения: {Response.StatusCode}");
+
+                string ResponseFromServer = new StreamReader(Response.GetResponseStream()).ReadToEnd();
+                token = Response.Cookies["token"];
+            }
+            return token;
         }
-
-        public static void ParseLentaNews(string htmlCode)
+        public static string GetContent(Cookie token)
         {
-            var htmlDoc = new HtmlDocument();
-            htmlDoc.LoadHtml(htmlCode);
+            string Content = null;
+            string Url = "http://news.permaviat.ru/main";
+            Debug.WriteLine($"Выполняем запрос: {Url}");
 
-            var newsCards = htmlDoc.DocumentNode
-                .SelectNodes("//section[contains(@class, 'rubric-page')]//a[contains(@class, 'card')]");
+            HttpWebRequest Request = (HttpWebRequest)WebRequest.Create(Url);
+            Request.CookieContainer = new CookieContainer();
+            Request.CookieContainer.Add(token);
 
-            if (newsCards == null || !newsCards.Any())
+            using (HttpWebResponse Response = (HttpWebResponse)Request.GetResponse())
             {
-                Console.WriteLine("Новости не найдены. Возможно, изменилась структура сайта.");
-                return;
+                Debug.WriteLine($"Статус выполнения: {Response.StatusCode}");
+
+                Content = new StreamReader(Response.GetResponseStream()).ReadToEnd();
+
             }
+            return Content;
+        }
+        public static void ParsingHtml(string htmlCode)
+        {
+            var Html = new HtmlDocument();
+            Html.LoadHtml(htmlCode);
 
-            Console.WriteLine($"Найдено новостей: {newsCards.Count}\n");
-
-            int count = 0;
-            foreach (var card in newsCards.Take(10)) 
+            var Document = Html.DocumentNode;
+            IEnumerable DivsNews = Document.Descendants(0).Where(n => n.HasClass("news"));
+            foreach (HtmlNode DivNews in DivsNews)
             {
-                count++;
-                Console.WriteLine($"Новость #{count}");
-                Console.WriteLine(new string('-', 50));
+                var src = DivNews.ChildNodes[1].GetAttributeValue("src", "нет изображения");
 
-                var titleNode = card.SelectSingleNode(".//h3[contains(@class, 'card-title')]") ??
-                               card.SelectSingleNode(".//span[contains(@class, 'card-title')]");
-                string title = titleNode?.InnerText?.Trim() ?? "Без заголовка";
-                Console.WriteLine($"Заголовок: {title}");
-                var descNode = card.SelectSingleNode(".//div[contains(@class, 'card-annotation')]");
-                string description = descNode?.InnerText?.Trim() ?? "Без описания";
-                if (description.Length > 150)
-                    description = description.Substring(0, 150) + "...";
-                Console.WriteLine($"Описание: {description}");
-
-                var timeNode = card.SelectSingleNode(".//time[contains(@class, 'card-date')]");
-                string date = timeNode?.InnerText?.Trim() ?? "Дата не указана";
-                Console.WriteLine($"Дата: {date}");
-                string link = "https://lenta.ru" + card.GetAttributeValue("href", "");
-                Console.WriteLine($"Ссылка: {link}");
-
-                Console.WriteLine(new string('-', 50) + "\n");
+                var name = DivNews.ChildNodes.Count > 3 ? DivNews.ChildNodes[3].InnerHtml : "нет названия";
+                var description = DivNews.ChildNodes.Count > 5 ? DivNews.ChildNodes[5].InnerHtml : "нет описания";
+                Console.WriteLine(name + "\n" + "Изображение" + src + "\n" + "Описание:" + description + "\n");
             }
         }
     }
