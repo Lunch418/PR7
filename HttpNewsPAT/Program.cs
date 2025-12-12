@@ -166,11 +166,9 @@ namespace HttpNewsPAT
         {
             try
             {
-                // URL главной страницы Lenta.ru
                 string url = "https://lenta.ru/";
                 WriteLog($"Начинается парсинг Lenta.ru: {url}");
 
-                // Отправляем GET-запрос к сайту
                 HttpResponseMessage response = await httpClient.GetAsync(url);
                 WriteLog($"Статус выполнения запроса к Lenta.ru: {response.StatusCode}");
 
@@ -199,7 +197,7 @@ namespace HttpNewsPAT
                             parsedContent += $"{title}\nСсылка: {link}\n\n";
                         }
 
-                        Console.WriteLine("=== Последние новости с Lenta.ru ===\n");
+                        Console.WriteLine(" Последние новости с Lenta.ru \n");
                         Console.Write(parsedContent);
                     }
                     else
